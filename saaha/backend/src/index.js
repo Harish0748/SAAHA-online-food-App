@@ -1,6 +1,8 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
@@ -8,16 +10,44 @@ const path = require('path');
 const app = express();
 const server = http.createServer(app);
 
-// Socket.IO for real-time order tracking
+// Allowed origins (from env, comma separated)
+const allowedOriginsEnv = process.env.ALLOWED_ORIGINS || 'http://localhost:5173,http://localhost:5174';
+const allowedOrigins = allowedOriginsEnv.split(',').map((s) => s.trim()).filter(Boolean);
+
+// Socket.IO for real-time order tracking (restrict origins)
 const io = new Server(server, {
-  cors: { origin: '*', methods: ['GET', 'POST'] },
+  cors: { origin: allowedOrigins, methods: ['GET', 'POST'] },
 });
 
 // Make io accessible in routes
 app.set('io', io);
 
 // ── Middleware ──────────────────────────────────────────
-app.use(cors());
+// Security headers
+app.use(helmet());
+
+// CORS with whitelist
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // allow requests with no origin (curl, mobile apps, server-to-server)
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.indexOf(origin) !== -1) return callback(null, true);
+      return callback(new Error('Not allowed by CORS'));
+    },
+    credentials: true,
+  })
+);
+
+// Rate limiter for auth endpoints (protect against brute force)
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10, // limit each IP to 10 requests per windowMs
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+app.use('/api/auth', authLimiter);
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));

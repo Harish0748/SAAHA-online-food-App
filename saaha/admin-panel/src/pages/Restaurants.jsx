@@ -83,8 +83,18 @@ export default function Restaurants() {
                   <td>
                     {!r.is_verified ? (
                       <>
-                        <button className="btn small success" onClick={() => verify(r.id)} style={{ marginRight: 6 }}>Verify</button>
+                        <button
+                          className="btn small success"
+                          onClick={() => verify(r.id)}
+                          style={{ marginRight: 6 }}
+                          disabled={!r.has_paid_subscription}
+                        >
+                          {r.has_paid_subscription ? 'Verify' : 'Requires payment'}
+                        </button>
                         <button className="btn small danger" onClick={() => reject(r.id)}>Reject</button>
+                        {!r.has_paid_subscription && (
+                          <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 6 }}>Payment required</div>
+                        )}
                       </>
                     ) : (
                       <button className="btn small secondary" onClick={() => toggleSuspend(r.id)}>

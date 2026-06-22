@@ -146,7 +146,8 @@ router.get('/restaurants', adminOnly, async (req, res) => {
   try {
     let query = `SELECT id, restaurant_name, owner_name, owner_email, owner_phone, city,
                         is_verified, is_active, is_open, subscription_type, subscription_status,
-                        rating, created_at
+                        rating, created_at,
+                        EXISTS (SELECT 1 FROM subscriptions s WHERE s.restaurant_id = restaurants.id AND s.payment_status='paid' AND s.is_active = TRUE) AS has_paid_subscription
                  FROM restaurants WHERE 1=1`;
     const params = [];
     let idx = 1;
@@ -165,12 +166,43 @@ router.get('/restaurants', adminOnly, async (req, res) => {
 // Approve / verify a restaurant
 router.patch('/restaurants/:id/verify', adminOnly, async (req, res) => {
   try {
+    // Ensure the restaurant exists
+    const r = await db.query('SELECT subscription_status FROM restaurants WHERE id=$1', [req.params.id]);
+    if (!r.rows.length) return res.status(404).json({ success: false, message: 'Not found' });
+
+    // Require a paid subscription OR an active subscription_status on the restaurant before verification
+    const subStatus = r.rows[0].subscription_status;
+    const paidCheck = await db.query(
+      `SELECT COUNT(*)::int as count FROM subscriptions WHERE restaurant_id=$1 AND payment_status='paid' AND is_active=TRUE`,
+      [req.params.id]
+    );
+    const hasPaid = (paidCheck.rows[0] && parseInt(paidCheck.rows[0].count, 10) > 0) || subStatus === 'active';
+    if (!hasPaid) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot verify restaurant — no paid subscription found. Please ensure subscription payment is completed before verification.'
+      });
+    }
+
     const result = await db.query(
       'UPDATE restaurants SET is_verified=true, updated_at=NOW() WHERE id=$1 RETURNING id, restaurant_name, is_verified',
       [req.params.id]
     );
-    if (!result.rows.length) return res.status(404).json({ success: false, message: 'Not found' });
     res.json({ success: true, restaurant: result.rows[0] });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// Get recent subscriptions for a restaurant (admin view)
+router.get('/restaurants/:id/subscriptions', adminOnly, async (req, res) => {
+  try {
+    const result = await db.query(
+      `SELECT id, plan_type, amount, start_date, end_date, payment_id, payment_status, is_active, created_at
+       FROM subscriptions WHERE restaurant_id=$1 ORDER BY start_date DESC LIMIT 20`,
+      [req.params.id]
+    );
+    res.json({ success: true, subscriptions: result.rows });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Server error' });
   }

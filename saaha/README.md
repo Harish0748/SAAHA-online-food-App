@@ -141,3 +141,7 @@ Razorpay is fully wired (`backend/src/routes/payments.js`):
 
 - `docs/API.md` — every backend endpoint, request/response shapes, Socket.IO events.
 - `docs/DEPLOYMENT.md` — deploying the backend, both web panels, and submitting the two mobile apps to the Play Store / App Store.
+
+## 🔐 Security & Firewalls
+
+See [SECURITY.md](SECURITY.md) for recommended host firewall rules, Docker Compose hardening, and Razorpay verification notes. Important scripts are available in `scripts/firewall/` — run them as Administrator/root after reviewing.
